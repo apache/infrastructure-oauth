@@ -119,7 +119,6 @@ async def init_oidc(form_data):
     auth_req = client.construct_AuthorizationRequest(request_args=args)
     login_url = auth_req.request(client.authorization_endpoint)
     states[session["state"]] = session
-    print(client.keyjar)
     return quart.Response(
         status=302,
         response="Redirecting...",
