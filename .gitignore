@@ -1,0 +1,5 @@
+# dev env
+.idea
+__pycache__
+# temp config for testing
+config.yaml

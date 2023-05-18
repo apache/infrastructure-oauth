@@ -1,0 +1,4 @@
+quart            # Quart async web server
+asfpy            # asfpy for async ldap clitools
+pyyaml           # YAML reader for configs
+oic              # PyOIDC library

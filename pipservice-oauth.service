@@ -1,0 +1,15 @@
+[Unit]
+Description=ASF OAuth+OIDC Service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/oauth/
+ExecStart=/usr/local/bin/pipenv run python3 main.py
+Restart=always
+User=www-data
+Group=www-data
+StandardError=journal
+StandardOutput=journal
+
+[Install]
+WantedBy=multi-user.target
