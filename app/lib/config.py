@@ -27,7 +27,7 @@ import yaml
 import os
 
 # If pipservice, we may use the pipservice module to define a config. Use if found.
-PIPSERVICE_CONFIG = os.path.join(os.path.realpath(".."), "oauth.yaml")
+PIPSERVICE_CONFIG = os.path.join(os.path.realpath("."), "oauth.yaml")
 CONFIG_FILE = PIPSERVICE_CONFIG if os.path.isfile(PIPSERVICE_CONFIG) else "config.yaml"
 
 
