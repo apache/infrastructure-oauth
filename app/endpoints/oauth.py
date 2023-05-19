@@ -179,6 +179,15 @@ quart.current_app.add_url_rule(
     view_func=middleware.glued(init_oidc),
 )
 
+# Second endpoint for OAuth init, allowing for backwards compat (auth instead of oauth)
+quart.current_app.add_url_rule(
+    "/auth-oidc",
+    methods=[
+        "GET",
+    ],
+    view_func=middleware.glued(init_oidc),
+)
+
 # Endpoint for callback from OIDC Provider
 quart.current_app.add_url_rule(
     "/callback-oidc",
