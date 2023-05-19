@@ -26,13 +26,13 @@ If you have any questions that this documentation does not answer, get in touch 
 
 How to use the ASF OAuth system for your own service:
 
-- Your service callback URL MUST use HTTPS.
+- Your service callback URL **MUST** use HTTPS.
 - Create a state object that will hold your service's own temporary request information. The ID of this object MUST be either alphanumerical or hexadecimal and between 10 and 64 characters in length. Dashes are also allowed. You may re-use the same ID, but we recommend that you do not. We recommend using UUID4 for this ID.
 - Save your state object locally, and redirect the client to `https://oauth.apache.org/oauth-oidc?state=$stateID&redirect_uri=$callback`, where:
     - `$stateID` is the ID of the state object you created
     - `$callback` is a TLS-enabled URL which the OAuth system will redirect to upon successful authentication.
 - The OAuth system will, upon successful authentication, redirect to the callback URL and pass on a `code` parameter in the URL's query string. If there are any query string parameters in your callback URL, the code will be appended to the existing URL.
-- From the backend of your service, submit a request to: `https://oauth.apache.org/token-oidc?code=$code` to retrieve the information about the user who just authenticated, in JSON format (see below). You can only retrieve this information once, after which the token becomes invalid; and you MUSTcomplete the request no later than ten minutes after the callback URL was visited.
+- From the backend of your service, submit a request to: `https://oauth.apache.org/token-oidc?code=$code` to retrieve the information about the user who just authenticated, in JSON format (see below). You can only retrieve this information once, after which the token becomes invalid; and you **MUST** complete the request no later than ten minutes after the callback URL was visited.
 - Verify the request by comparing your own state ID against the state value in the JSON result.
 
 An example user JSON result from our token endpoint could be:
