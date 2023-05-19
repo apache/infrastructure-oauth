@@ -27,6 +27,9 @@ import oic.utils.authn.client
 import oic.oic.message
 import oic.utils.keyio
 import urllib.parse
+import time
+
+STATE_EXPIRY = 600  # All sessions expire 10 minutes after being created
 
 
 def make_client():
@@ -149,6 +152,7 @@ async def callback_oidc(form_data):
             details = await committer.verify()
             if details:
                 states[oidc_state]["credentials"] = details
+                states[oidc_state]["timestamp"] = time.time()  # Set so we can check expiry of state
                 url = make_redirect_url(states[oidc_state]["redirect_uri"], code=oidc_state)
                 return quart.Response(
                     status=302,
@@ -165,8 +169,10 @@ async def token_oidc(form_data):
     code = form_data.get("code")
     if code and code in states:
         credentials = states[code]["credentials"]
+        expiry = states[code]["timestamp"] + STATE_EXPIRY
         del states[code]
-        return credentials
+        if expiry >= time.time():  # Only return creds if within expiry window
+            return credentials
     return quart.Response(status=404, response="Could not find the login session that was requested.")
 
 
