@@ -151,6 +151,7 @@ async def callback_oidc(form_data):
             committer = ldap.Committer(username)
             details = await committer.verify()
             if details:
+                details["provider"] = "oidc"  # Distinguish between old oauth and OIDC-backed (2FA etc)
                 states[oidc_state]["credentials"] = details
                 states[oidc_state]["timestamp"] = time.time()  # Set so we can check expiry of state
                 url = make_redirect_url(states[oidc_state]["redirect_uri"], code=oidc_state)
