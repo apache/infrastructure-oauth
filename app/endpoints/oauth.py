@@ -152,6 +152,12 @@ async def callback_oidc(form_data):
             details = await committer.verify()
             if details:
                 details["provider"] = "oidc"  # Distinguish between old oauth and OIDC-backed (2FA etc)
+                # Some services require 2FA. Our OIDC workflows will always use 2FA if set up, though they may skip
+                # it if not set up by the user. There is no way for the oauth backend to know if 2FA is enabled 
+                # in the workflow, but since these apps need to know, we have to make an educated guess.
+                # Currently, no in-production app make use of the 2FA requirement, but we do have services in 
+                # development that do.
+                details["mfa"] = True  # TODO: Discuss (100%) enforcement of 2FA on keycloak
                 states[oidc_state]["credentials"] = details
                 states[oidc_state]["timestamp"] = time.time()  # Set so we can check expiry of state
                 url = make_redirect_url(states[oidc_state]["redirect_uri"], code=oidc_state)
