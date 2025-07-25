@@ -176,6 +176,7 @@ async def token_oidc(form_data):
     code = form_data.get("code")
     if code and code in states:
         credentials = states[code]["credentials"]
+        credentials["origin_uri"] = states[code]["redirect_uri"]
         expiry = states[code]["timestamp"] + STATE_EXPIRY
         del states[code]
         if expiry >= time.time():  # Only return creds if within expiry window
