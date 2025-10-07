@@ -147,7 +147,7 @@ async def callback_oidc(form_data):
     if isinstance(resp, oic.oic.message.AccessTokenResponse):  # Could be ErrorResponse, we don't want that...
         userinfo = client.do_user_info_request(state=oidc_state)
         if userinfo:
-            username = userinfo["preferred_username"]
+            username = userinfo["username"]
             committer = ldap.Committer(username)
             details = await committer.verify()
             if details:
