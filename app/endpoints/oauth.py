@@ -48,10 +48,10 @@ def make_client():
     provider = oic.oic.message.ProviderConfigurationResponse(
         version="1.0",
         issuer=config.oidc.issuer,
-        authorization_endpoint=config.oidc.endpoint + "authorize",
-        token_endpoint=config.oidc.endpoint + "token",
-        jwks_uri=config.oidc.endpoint + "certs",
-        userinfo_endpoint=config.oidc.endpoint + "jwks",
+        authorization_endpoint=config.oidc.endpoint + "authorize/",
+        token_endpoint=config.oidc.endpoint + "token/",
+        jwks_uri=config.oidc.issuer + "jwks/",
+        userinfo_endpoint=config.oidc.endpoint + "userinfo/",
     )
 
     client.handle_provider_config(provider, provider["issuer"])
