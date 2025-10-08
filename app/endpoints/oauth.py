@@ -140,14 +140,14 @@ async def callback_oidc(form_data):
         return quart.Response(status=400, response="Unknown session, perhaps it expired? Please retry your login.")
 
     resp = client.do_access_token_request(
-        scope=["openid"],
+        scope=["openid", "profile", "email"],
         state=oidc_state,
         request_args={"code": oidc_code},
     )
     if isinstance(resp, oic.oic.message.AccessTokenResponse):  # Could be ErrorResponse, we don't want that...
         userinfo = client.do_user_info_request(state=oidc_state)
         if userinfo:
-            username = userinfo["username"]
+            username = userinfo["preferred_username"]
             committer = ldap.Committer(username)
             details = await committer.verify()
             if details:
