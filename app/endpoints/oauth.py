@@ -114,7 +114,7 @@ async def init_oidc(form_data):
     args = {
         "client_id": config.oidc.client_id,
         "response_type": "code",
-        "scope": ["openid"],
+        "scope": ["openid", "profile", "email"],
         "state": session["state"],
         "nonce": session["nonce"],
         "redirect_uri": config.oidc.redirect_uri,
