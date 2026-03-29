@@ -99,7 +99,7 @@ async def init_oidc(form_data):
         )
     if not re.match(r"^[-a-z0-9]+$", origin_state):
         return quart.Response(status=400, response="Origin state ID MUST be hex or alphanumerical (dashes are allowed)")
-    if not redirect_uri or not re.match(r"https://([-0-9a-zA-Z\.]+)", redirect_uri):
+    if not redirect_uri or not re.match(r"https://([-0-9a-zA-Z.]+)", redirect_uri):
         return quart.Response(
             status=400,
             response="Invalid redirect URI specified. MUST be of format https://foo.bar/baz.html and MUST be https",
