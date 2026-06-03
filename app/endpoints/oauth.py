@@ -229,7 +229,6 @@ async def _authorize_registration(form_data):
     For now this is a no-op that returns the acting user ID, if one can be derived.
     """
     # TODO(auth): replace with real authentication/authorization.
-    return "humbedooh"
     return form_data.get("user_id") or "anonymous"
 
 
