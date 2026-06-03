@@ -80,17 +80,43 @@ LOGIN_AUDIT_DDL = """
     )
 """
 
+# DDL for the token audit log. Like the login audit log, this lives in its own
+# per-month database file (see _token_audit_db_path), separate from the main DB.
+# It records calls to the token_oidc endpoint where a backend redeems a code.
+TOKEN_AUDIT_DDL = """
+    CREATE TABLE IF NOT EXISTS token_audit_log (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp       REAL NOT NULL,           -- epoch timestamp of the token request
+        ip              TEXT,                    -- IP the token request came from
+        user_id         TEXT,                    -- user ID the token belongs to (if known)
+        user_agent      TEXT,                    -- user agent of the requesting backend
+        client_app_id   TEXT,                    -- registered client app ID (if matched)
+        redirect_uri    TEXT,                    -- redirect URI tied to the login session
+        success         INTEGER NOT NULL         -- 1 if credentials were served, 0 otherwise
+    )
+"""
 
-def _login_audit_db_path():
-    """Return the path to the login audit DB for the current $year-$month.
+
+def _monthly_audit_db_path(filename_template):
+    """Return a path inside the audit directory for the current $year-$month.
 
     The audit directory (config.database.audit_path) is created if it does not yet
-    exist. Each month gets its own database file, e.g. ``audit/2026-06.db``.
+    exist. ``filename_template`` is formatted with ``month`` (e.g. "2026-06").
     """
     audit_dir = config.database.audit_path
     os.makedirs(audit_dir, exist_ok=True)
     month = datetime.datetime.now().strftime("%Y-%m")
-    return os.path.join(audit_dir, f"{month}.db")
+    return os.path.join(audit_dir, filename_template.format(month=month))
+
+
+def _login_audit_db_path():
+    """Path to the login audit DB for the current month, e.g. ``audit/2026-06.db``."""
+    return _monthly_audit_db_path("{month}.db")
+
+
+def _token_audit_db_path():
+    """Path to the token audit DB for the current month, e.g. ``audit/token-2026-06.db``."""
+    return _monthly_audit_db_path("token-{month}.db")
 
 
 @contextlib.contextmanager
@@ -102,6 +128,18 @@ def _connect_login_audit():
     """
     with _connect(_login_audit_db_path()) as conn:
         conn.execute(LOGIN_AUDIT_DDL)
+        yield conn
+
+
+@contextlib.contextmanager
+def _connect_token_audit():
+    """Yields a connection to the current month's token audit DB, ensuring its table exists.
+
+    If the database file for this month does not yet exist, opening the connection
+    creates it, and the token_audit_log table is created on demand.
+    """
+    with _connect(_token_audit_db_path()) as conn:
+        conn.execute(TOKEN_AUDIT_DDL)
         yield conn
 
 
@@ -144,8 +182,10 @@ def setup():
             """
         )
 
-    # Ensure the current month's login audit database (and its table) exists.
+    # Ensure the current month's login and token audit databases (and tables) exist.
     with _connect_login_audit():
+        pass
+    with _connect_token_audit():
         pass
 
 
@@ -331,6 +371,29 @@ def log_login(ip, user_id, user_agent, redirect_uri, client_app_id=None):
             "INSERT INTO login_audit_log (timestamp, ip, user_id, user_agent, client_app_id, redirect_uri) "
             "VALUES (?, ?, ?, ?, ?, ?)",
             (time.time(), ip, user_id, user_agent, client_app_id, redirect_uri),
+        )
+
+
+def log_token(ip, user_id, user_agent, redirect_uri, success, client_app_id=None):
+    """Record a call to the token_oidc endpoint in the token audit log.
+
+    The entry is written to the current month's dedicated token audit database
+    (see _token_audit_db_path). If client_app_id is not supplied, we attempt to
+    resolve it from the redirect URI by matching against approved clients' patterns.
+
+    :param success: Whether credentials were actually served for this token request.
+    """
+    if client_app_id is None and redirect_uri:
+        match = find_client_for_redirect(redirect_uri)
+        if match:
+            client_app_id = match["client_id"]
+    # Token audit entries go into the current month's dedicated audit database,
+    # which is created (along with the audit directory) on demand if needed.
+    with _connect_token_audit() as conn:
+        conn.execute(
+            "INSERT INTO token_audit_log (timestamp, ip, user_id, user_agent, client_app_id, redirect_uri, success) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (time.time(), ip, user_id, user_agent, client_app_id, redirect_uri, 1 if success else 0),
         )
 
 

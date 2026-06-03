@@ -193,14 +193,26 @@ async def callback_oidc(form_data):
 
 async def token_oidc(form_data):
     """Token response. Given a valid oauth token, presents the backend client with committer details"""
+    ip = quart.request.headers.get("X-Forwarded-For", quart.request.remote_addr)
+    user_agent = quart.request.headers.get("User-Agent")
     code = form_data.get("code")
     if code and code in states:
         credentials = states[code]["credentials"]
         credentials["origin_uri"] = states[code]["redirect_uri"]
+        redirect_uri = states[code]["redirect_uri"]
+        user_id = credentials.get("uid")
         expiry = states[code]["timestamp"] + STATE_EXPIRY
         del states[code]
-        if expiry >= time.time():  # Only return creds if within expiry window
+        # Record the token request in the audit log, whether or not it is still valid.
+        success = expiry >= time.time()  # Only return creds if within expiry window
+        database.log_token(
+            ip=ip, user_id=user_id, user_agent=user_agent, redirect_uri=redirect_uri, success=success
+        )
+        if success:
             return credentials
+    else:
+        # Unknown/missing code: no session to tie this to, but still worth auditing.
+        database.log_token(ip=ip, user_id=None, user_agent=user_agent, redirect_uri=None, success=False)
     return quart.Response(status=404, response="Could not find the login session that was requested.")
 
 
