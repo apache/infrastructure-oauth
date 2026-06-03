@@ -1,0 +1,12 @@
+[project]
+name = "infrastructure-oauth"
+version = "0.1.0"
+description = "ASF OAuth+OIDC Service"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "asfpy>=0.56",
+    "oic>=1.7.0",
+    "pyyaml>=6.0.3",
+    "quart>=0.20.0",
+]
