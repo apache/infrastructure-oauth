@@ -221,26 +221,35 @@ def _client_ip():
     return quart.request.headers.get("X-Forwarded-For", quart.request.remote_addr)
 
 
-async def _authorize_registration(form_data):
-    """Authorization placeholder for the client-app registration endpoint.
+def _request_token(form_data):
+    """Extract the caller's bearer token from the Authorization header or a 'token' field."""
+    auth = quart.request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[len("Bearer ") :].strip()
+    return form_data.get("token")
 
-    TODO: Decide and implement the auth scheme for who may register a client app
-    (e.g. any authenticated committer via an OAuth session, an API token, etc.).
-    For now this is a no-op that returns the acting user ID, if one can be derived.
+
+async def _authorize_registration(form_data):
+    """Authorize a client-app registration request.
+
+    Any team with a valid token in the config 'authorization' section may register
+    (or update) a client app. Returns the authenticated team name, or None if the
+    token is missing/unknown.
     """
-    # TODO(auth): replace with real authentication/authorization.
-    return form_data.get("user_id") or "anonymous"
+    return config.authorization.team_for_token(_request_token(form_data))
 
 
 async def _authorize_review(form_data):
-    """Authorization placeholder for the approve/deny endpoint.
+    """Authorize a client-app approve/deny request.
 
-    TODO: Restrict to administrators (e.g. infra-root / a designated group) once
-    the auth scheme is decided. For now this is a no-op that returns the acting
-    user ID, if one can be derived.
+    Only teams permitted to approve (the infrastructure team) may review client
+    apps. Returns the authenticated team name, or None if the token is missing,
+    unknown, or belongs to a team that is not allowed to approve.
     """
-    # TODO(auth): replace with real authentication/authorization.
-    return form_data.get("user_id") or "anonymous"
+    team = config.authorization.team_for_token(_request_token(form_data))
+    if team and config.authorization.can_approve(team):
+        return team
+    return None
 
 
 async def register_client(form_data):
@@ -262,9 +271,9 @@ async def register_client(form_data):
     When updating, any subset of those may be supplied; omitted fields are left as-is.
     """
     actor = await _authorize_registration(form_data)
-    if not actor or actor == "anonymous":
+    if not actor:
         return quart.Response(
-            status=403, response="Authorization required."
+            status=403, response="A valid team authorization token is required to register a client app."
         )
 
     client_id = form_data.get("client_id")
@@ -302,7 +311,7 @@ async def register_client(form_data):
             return quart.Response(status=404, response="No client application with that ID was found.")
         entry = database.get_client(client_id)
         return quart.jsonify({"client_id": client_id, "status": entry["status"]})
-    print("MOO")
+
     # Create path: no client_id, so register a brand new client app. All fields are required.
     if not description:
         return quart.Response(status=400, response="A client app 'description' (name) is required.")
@@ -331,6 +340,10 @@ async def review_client(form_data):
       - action:    either 'approve' or 'deny' (required)
     """
     actor = await _authorize_review(form_data)
+    if not actor:
+        return quart.Response(
+            status=403, response="Only the infrastructure team may approve or deny client app registrations."
+        )
 
     client_id = form_data.get("client_id")
     action = (form_data.get("action") or "").lower()

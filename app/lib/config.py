@@ -25,6 +25,8 @@ if not __debug__:
 
 import yaml
 import os
+import hashlib
+import hmac
 
 # If pipservice, we may use the pipservice module to define a config. Use if found.
 PIPSERVICE_CONFIG = os.path.join(os.path.realpath("."), "oauth.yaml")
@@ -61,7 +63,52 @@ class DatabaseConfiguration:
         self.audit_path = yml.get("audit_path", "audit")
 
 
+class AuthorizationConfiguration:
+    """Team-based bearer-token authorization for the client-app endpoints.
+
+    The 'authorization' section of the config is a mapping of team name -> the
+    SHA-256 hex digest of that team's bearer token (NOT the token itself). A request
+    authenticates by presenting its raw bearer token; we hash it and compare the
+    digest against the configured ones, so plaintext tokens are never stored on disk.
+
+    To generate a digest for a token, e.g.:
+        python3 -c "import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())" <token>
+    """
+
+    # Teams permitted to approve or deny client app registrations. Any team with a
+    # valid token may *submit* a registration, but only these teams may review them.
+    APPROVAL_TEAMS = ("infrastructure",)
+
+    def __init__(self, yml: dict):
+        # team -> sha256 hex digest of the token, as configured. Digests are stored
+        # lower-cased so comparison is case-insensitive on the hex representation.
+        self.digests = {team: str(digest).lower() for team, digest in (yml or {}).items() if digest}
+        # Reverse lookup: digest -> team.
+        self.team_by_digest = {digest: team for team, digest in self.digests.items()}
+
+    def team_for_token(self, token):
+        """Return the team a raw bearer token belongs to, or None if unknown/blank.
+
+        The provided token is SHA-256 hashed and matched against the configured
+        digests using a constant-time comparison.
+        """
+        if not token:
+            return None
+        digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        # Constant-time scan so a match doesn't leak timing about which digest hit.
+        match = None
+        for known_digest, team in self.team_by_digest.items():
+            if hmac.compare_digest(known_digest, digest):
+                match = team
+        return match
+
+    def can_approve(self, team):
+        """Return True if the given team may approve/deny client app registrations."""
+        return team in self.APPROVAL_TEAMS
+
+
 cfg_yaml = yaml.safe_load(open(CONFIG_FILE, "r"))
 server = ServerConfiguration(cfg_yaml.get("server", {}))
 oidc = OIDCConfiguration(cfg_yaml.get("oidc", {}))
+authorization = AuthorizationConfiguration(cfg_yaml.get("authorization", {}))
 database = DatabaseConfiguration(cfg_yaml.get("database", {}))
