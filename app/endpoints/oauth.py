@@ -19,7 +19,7 @@
 
 import quart
 import re
-from ..lib import middleware, config, ldap
+from ..lib import middleware, config, ldap, database
 
 from oic import rndstr
 from oic.oic import Client
@@ -104,6 +104,16 @@ async def init_oidc(form_data):
             status=400,
             response="Invalid redirect URI specified. MUST be of format https://foo.bar/baz.html and MUST be https",
         )
+    # Ensure the redirect URI belongs to a registered, approved client app. We check every
+    # approved client's redirect_uris list, matching each entry as an fnmatch glob pattern.
+    # If no client app allows this redirect URI, we refuse the login. This enforcement can
+    # be turned off via the server.enforce_redirect_uris config option, in which case any
+    # (otherwise valid) redirect URI is allowed.
+    if config.server.enforce_redirect_uris and not database.find_client_for_redirect(redirect_uri):
+        return quart.Response(
+            status=400,
+            response="The redirect URI is not allowed. It must match a registered and approved client application.",
+        )
 
     session = {
         "state": rndstr(),
@@ -160,7 +170,16 @@ async def callback_oidc(form_data):
                 details["mfa"] = True  # TODO: Discuss (100%) enforcement of 2FA on keycloak
                 states[oidc_state]["credentials"] = details
                 states[oidc_state]["timestamp"] = time.time()  # Set so we can check expiry of state
-                url = make_redirect_url(states[oidc_state]["redirect_uri"], code=oidc_state)
+                redirect_uri = states[oidc_state]["redirect_uri"]
+                # Record the successful login in the audit log. The client app ID, if any, is
+                # resolved from the redirect URI against the registered (approved) clients.
+                database.log_login(
+                    ip=quart.request.headers.get("X-Forwarded-For", quart.request.remote_addr),
+                    user_id=username,
+                    user_agent=quart.request.headers.get("User-Agent"),
+                    redirect_uri=redirect_uri,
+                )
+                url = make_redirect_url(redirect_uri, code=oidc_state)
                 return quart.Response(
                     status=302,
                     response="Redirecting...",
@@ -182,6 +201,138 @@ async def token_oidc(form_data):
         if expiry >= time.time():  # Only return creds if within expiry window
             return credentials
     return quart.Response(status=404, response="Could not find the login session that was requested.")
+
+
+def _client_ip():
+    """Best-effort source IP for the current request (honours a proxy header)."""
+    return quart.request.headers.get("X-Forwarded-For", quart.request.remote_addr)
+
+
+async def _authorize_registration(form_data):
+    """Authorization placeholder for the client-app registration endpoint.
+
+    TODO: Decide and implement the auth scheme for who may register a client app
+    (e.g. any authenticated committer via an OAuth session, an API token, etc.).
+    For now this is a no-op that returns the acting user ID, if one can be derived.
+    """
+    # TODO(auth): replace with real authentication/authorization.
+    return "humbedooh"
+    return form_data.get("user_id") or "anonymous"
+
+
+async def _authorize_review(form_data):
+    """Authorization placeholder for the approve/deny endpoint.
+
+    TODO: Restrict to administrators (e.g. infra-root / a designated group) once
+    the auth scheme is decided. For now this is a no-op that returns the acting
+    user ID, if one can be derived.
+    """
+    # TODO(auth): replace with real authentication/authorization.
+    return form_data.get("user_id") or "anonymous"
+
+
+async def register_client(form_data):
+    """Register a new client application, or update an existing one.
+
+    If a 'client_id' is supplied, the matching client app is updated in place:
+    only the fields that are provided are changed, and the change is recorded in
+    the client audit log. Otherwise a brand new client app is registered, which
+    starts life in 'pending' status.
+
+    Expected fields:
+      - client_id:      UUID of an existing client app to update (optional; omit to create)
+      - description:    human-friendly name of the application
+      - contact_email:  contact address for the application
+      - redirect_uris:  one or more accepted redirect URIs (fnmatch globs allowed).
+                        May be supplied as a JSON list, or as a single string.
+
+    When creating, description, contact_email and redirect_uris are all required.
+    When updating, any subset of those may be supplied; omitted fields are left as-is.
+    """
+    actor = await _authorize_registration(form_data)
+    if not actor or actor == "anonymous":
+        return quart.Response(
+            status=403, response="Authorization required."
+        )
+
+    client_id = form_data.get("client_id")
+    description = form_data.get("description")
+    contact_email = form_data.get("contact_email")
+    redirect_uris = form_data.get("redirect_uris")
+
+    # Validate any fields that were supplied. On create these are all required (checked below);
+    # on update they are optional, so we only validate the ones that are actually present.
+    if contact_email is not None and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", contact_email):
+        return quart.Response(status=400, response="A valid 'contact_email' is required.")
+
+    # redirect_uris may arrive as a JSON list (JSON body) or a single string (form post).
+    if isinstance(redirect_uris, str):
+        redirect_uris = [redirect_uris]
+    if redirect_uris is not None:
+        if not isinstance(redirect_uris, list) or not redirect_uris:
+            return quart.Response(
+                status=400, response="'redirect_uris' must be a non-empty list of URL patterns."
+            )
+        if not all(isinstance(uri, str) and uri for uri in redirect_uris):
+            return quart.Response(status=400, response="Every entry in 'redirect_uris' must be a non-empty string.")
+
+    # Update path: a client_id was supplied, so amend the existing entry.
+    if client_id:
+        updated = database.update_client(
+            client_id,
+            actor=actor,
+            actor_ip=_client_ip(),
+            description=description,
+            contact_email=contact_email,
+            redirect_uris=redirect_uris,
+        )
+        if not updated:
+            return quart.Response(status=404, response="No client application with that ID was found.")
+        entry = database.get_client(client_id)
+        return quart.jsonify({"client_id": client_id, "status": entry["status"]})
+    print("MOO")
+    # Create path: no client_id, so register a brand new client app. All fields are required.
+    if not description:
+        return quart.Response(status=400, response="A client app 'description' (name) is required.")
+    if not contact_email:
+        return quart.Response(status=400, response="A valid 'contact_email' is required.")
+    if not redirect_uris:
+        return quart.Response(
+            status=400, response="'redirect_uris' is required and must be a non-empty list of URL patterns."
+        )
+
+    client_id = database.register_client(
+        description=description,
+        redirect_uris=redirect_uris,
+        contact_email=contact_email,
+        registered_by=actor,
+        registered_ip=_client_ip(),
+    )
+    return quart.jsonify({"client_id": client_id, "status": database.STATUS_PENDING})
+
+
+async def review_client(form_data):
+    """Approve or deny a pending client application registration.
+
+    Expected fields:
+      - client_id: the UUID of the client application to review (required)
+      - action:    either 'approve' or 'deny' (required)
+    """
+    actor = await _authorize_review(form_data)
+
+    client_id = form_data.get("client_id")
+    action = (form_data.get("action") or "").lower()
+
+    if not client_id:
+        return quart.Response(status=400, response="A 'client_id' is required.")
+    if action not in ("approve", "deny"):
+        return quart.Response(status=400, response="'action' must be either 'approve' or 'deny'.")
+
+    status = database.STATUS_APPROVED if action == "approve" else database.STATUS_DENIED
+    updated = database.set_client_status(client_id, status, actor=actor, actor_ip=_client_ip())
+    if not updated:
+        return quart.Response(status=404, response="No client application with that ID was found.")
+    return quart.jsonify({"client_id": client_id, "status": status})
 
 
 # Endpoint for OAuth init
@@ -207,4 +358,22 @@ quart.current_app.add_url_rule(
     "/token-oidc",
     methods=["GET", "POST"],
     view_func=middleware.glued(token_oidc),
+)
+
+# Endpoint for registering a new client application (auth TBD)
+quart.current_app.add_url_rule(
+    "/clients/register",
+    methods=[
+        "POST",
+    ],
+    view_func=middleware.glued(register_client),
+)
+
+# Endpoint for approving or denying a client application registration (auth TBD)
+quart.current_app.add_url_rule(
+    "/clients/review",
+    methods=[
+        "GET",
+    ],
+    view_func=middleware.glued(review_client),
 )

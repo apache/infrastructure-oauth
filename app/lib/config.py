@@ -37,6 +37,9 @@ class ServerConfiguration:
         self.bind = yml["bind"]
         self.port = int(yml["port"])
         self.error_reporting = yml.get("error_reporting", "json")
+        # Whether to enforce that a login's redirect URI matches a registered,
+        # approved client app. If disabled, any redirect URI is allowed.
+        self.enforce_redirect_uris = bool(yml.get("enforce_redirect_uris", True))
 
 
 class OIDCConfiguration:
@@ -49,6 +52,16 @@ class OIDCConfiguration:
         self.redirect_uri = yml["redirect_uri"]
 
 
+class DatabaseConfiguration:
+    def __init__(self, yml: dict):
+        assert yml, f"No database configuration directives could be found in {CONFIG_FILE}!"
+        self.path = yml["path"]
+        # Directory for the per-month login audit log databases. Defaults to "audit"
+        # (created on startup if it does not yet exist).
+        self.audit_path = yml.get("audit_path", "audit")
+
+
 cfg_yaml = yaml.safe_load(open(CONFIG_FILE, "r"))
 server = ServerConfiguration(cfg_yaml.get("server", {}))
 oidc = OIDCConfiguration(cfg_yaml.get("oidc", {}))
+database = DatabaseConfiguration(cfg_yaml.get("database", {}))
