@@ -173,13 +173,14 @@ async def callback_oidc(form_data):
                 redirect_uri = states[oidc_state]["redirect_uri"]
                 # Record the successful login in the audit log. The client app ID, if any, is
                 # resolved from the redirect URI against the registered (approved) clients.
+                url = make_redirect_url(redirect_uri, code=oidc_state)
                 database.log_login(
                     ip=quart.request.headers.get("X-Forwarded-For", quart.request.remote_addr),
                     user_id=username,
                     user_agent=quart.request.headers.get("User-Agent"),
-                    redirect_uri=redirect_uri,
+                    redirect_uri=url,  # We keep the state ID here for forensics
                 )
-                url = make_redirect_url(redirect_uri, code=oidc_state)
+
                 return quart.Response(
                     status=302,
                     response="Redirecting...",
