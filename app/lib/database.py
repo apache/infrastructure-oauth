@@ -35,6 +35,7 @@ import json
 import os
 import sqlite3
 import time
+import urllib.parse
 import uuid
 
 from . import config
@@ -345,12 +346,21 @@ def find_client_for_redirect(redirect_uri, status=STATUS_APPROVED):
 
     Patterns are matched using fnmatch globbing. By default only approved clients
     are considered. Returns the matching client dict, or None if none match.
+
+    Any query string is stripped from both the candidate URI and the registered
+    patterns before matching, so it does not affect whether a client matches.
     """
+    redirect_uri = _strip_query(redirect_uri)
     for client in list_clients(status=status):
         for pattern in client["redirect_uris"]:
-            if fnmatch.fnmatch(redirect_uri, pattern):
+            if fnmatch.fnmatch(redirect_uri, _strip_query(pattern)):
                 return client
     return None
+
+
+def _strip_query(uri):
+    """Return uri with any query string and fragment removed."""
+    return urllib.parse.urlsplit(uri)._replace(query="", fragment="").geturl()
 
 
 def log_login(ip, user_id, user_agent, redirect_uri, client_app_id=None):
