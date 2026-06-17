@@ -154,16 +154,4 @@ class Committer:
         except AssertionError as ex:
             raise OAuthException("Common backend assertions failed, LDAP corruption?") from ex
 
-        # Get tooling membership
-        try:
-            result = await asfpy.clitools.ldapsearch_cli_async(ldap_base=LDAP_TOOLING_BASE, ldap_scope="base")
-            assert len(result) == 1
-            members = result[0].get("member")
-            assert type(members) is list and len(members) > 1
-            if LDAP_DN % self.user in members:
-                self.pmcs.append("tooling")
-                self.projects.append("tooling")
-        except AssertionError as ex:
-            raise OAuthException("Common backend assertions failed, LDAP corruption?") from ex
-
         return self.__dict__
