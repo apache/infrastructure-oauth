@@ -32,7 +32,6 @@ LDAP_DN = "uid=%s,ou=people,dc=apache,dc=org"
 LDAP_OWNER_FILTER = "(|(ownerUid=%s)(owner=uid=%s,ou=people,dc=apache,dc=org))"
 LDAP_MEMBER_FILTER = "(|(memberUid=%s)(member=uid=%s,ou=people,dc=apache,dc=org))"
 LDAP_ROOT_BASE = "cn=infrastructure-root,ou=groups,ou=services,dc=apache,dc=org"
-LDAP_TOOLING_BASE = "cn=tooling,ou=groups,ou=services,dc=apache,dc=org"
 
 
 class OAuthException(Exception):
