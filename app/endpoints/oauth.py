@@ -68,7 +68,7 @@ def make_redirect_url(url, **kwargs):
     # Parse original URL, so we can munge it with our token
     origin_url = urllib.parse.unquote(url)
     url_parsed = urllib.parse.urlparse(origin_url)
-    args = dict(urllib.parse.parse_qsl(url_parsed.query))
+    args = dict(urllib.parse.parse_qsl(url_parsed.query, True)) # don't ignore parameters without values
 
     # Add the token
     args.update(**kwargs)
